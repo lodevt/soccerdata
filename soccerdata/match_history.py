@@ -6,11 +6,25 @@ from typing import IO, Callable, Optional, Union
 
 import pandas as pd
 
-from ._common import BaseRequestsReader, make_game_id
+from ._common import BaseRequestsReader, make_game_id, SeasonCode
 from ._config import DATA_DIR, NOCACHE, NOSTORE, TEAMNAME_REPLACEMENTS, logger
 
 MATCH_HISTORY_DATA_DIR = DATA_DIR / "MatchHistory"
 MATCH_HISTORY_API = "https://www.football-data.co.uk"
+
+MINOR_LEAGUES = [
+    "ARG",
+    "ROU",
+    "AUS",
+    "SWZ",
+    "AUT",
+    "POL",
+    "SWE",
+    "NOR",
+    "DEN",
+    "USA",
+    "BRA",
+]
 
 
 def _parse_csv(raw_data: IO[bytes], lkey: str, skey: str) -> pd.DataFrame:
@@ -94,30 +108,86 @@ class MatchHistory(BaseRequestsReader):
         -------
         pd.DataFrame
         """
-        urlmask = MATCH_HISTORY_API + "/mmz4281/{}/{}.csv"
-        filemask = "{}_{}.csv"
-        col_rename = {
-            "Div": "league",
-            "Date": "date",
-            "Time": "time",
-            "HomeTeam": "home_team",
-            "AwayTeam": "away_team",
-            "Referee": "referee",
-        }
-
-        df_list = []
         for lkey, skey in itertools.product(self._selected_leagues.values(), self.seasons):
-            filepath = self.data_dir / filemask.format(lkey, skey)
-            url = urlmask.format(skey, lkey)
-            current_season = not self._is_complete(lkey, skey)
+            if lkey in MINOR_LEAGUES:
+                urlmask = MATCH_HISTORY_API + '/new/{}.csv'
+                filemask = '{}.csv'
+                col_rename = {
+                    'League': 'league',
+                    'Season': 'season',
+                    'Date': 'date',
+                    'Time': 'time',
+                    'Home': 'home_team',
+                    'Away': 'away_team',
+                }
 
-            reader = self.get(url, filepath, no_cache=current_season)
-            df_games = _parse_csv(reader, lkey, skey).assign(season=skey)
+                df_list = []
+                for lkey in self._selected_leagues.values():
+                    filepath = self.data_dir / filemask.format(lkey)
+                    url = urlmask.format(lkey)
+                    # current_season = not self._is_complete(lkey)
+                    reader = self.get(url, filepath, no_cache=True)
 
-            if "Time" not in df_games.columns:
-                df_games["Time"] = "12:00"
-            df_games["Time"] = df_games["Time"].fillna("12:00")
-            df_list.append(df_games)
+                    df_games = pd.read_csv(
+                        reader,
+                        encoding='ISO-8859-1',
+                    )
+                    if 'Time' not in df_games.columns:
+                        df_games['Time'] = "12:00"
+                    df_games["Time"] = df_games["Time"].fillna("12:00")
+                    df_list.append(df_games)
+                df = (
+                    pd.concat(df_list, sort=False)
+                    .rename(columns=col_rename)
+                    .assign(
+                        date=lambda x: pd.to_datetime(x["date"] + ' ' + x['time'], format="%d/%m/%Y %H:%M")
+                    )
+                    .drop("time", axis=1)
+                    # .pipe(self._translate_league)
+                    .replace(
+                        {
+                            'home_team': TEAMNAME_REPLACEMENTS,
+                            'away_team': TEAMNAME_REPLACEMENTS,
+                        }
+                    )
+                    .dropna(subset=['home_team', 'away_team'])
+                )
+
+                df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+                df['game'] = df.apply(make_game_id, axis=1)
+                df['season'] = SeasonCode.MULTI_YEAR.parse(df['season'])
+                df = df.replace(
+                    {
+                        'home_team': TEAMNAME_REPLACEMENTS,
+                        'away_team': TEAMNAME_REPLACEMENTS,
+                    })
+                df.set_index(['league', 'season', 'game'], inplace=True)
+                df.sort_index(inplace=True)
+                return df
+            else:
+                urlmask = MATCH_HISTORY_API + "/mmz4281/{}/{}.csv"
+                filemask = "{}_{}.csv"
+                col_rename = {
+                    "Div": "league",
+                    "Date": "date",
+                    "Time": "time",
+                    "HomeTeam": "home_team",
+                    "AwayTeam": "away_team",
+                    "Referee": "referee",
+                }
+
+                df_list = []
+                filepath = self.data_dir / filemask.format(lkey, skey)
+                url = urlmask.format(skey, lkey)
+                current_season = not self._is_complete(lkey, skey)
+
+                reader = self.get(url, filepath, no_cache=current_season)
+                df_games = _parse_csv(reader, lkey, skey).assign(season=skey)
+
+                if "Time" not in df_games.columns:
+                    df_games["Time"] = "12:00"
+                df_games["Time"] = df_games["Time"].fillna("12:00")
+                df_list.append(df_games)
 
         df = (
             pd.concat(df_list, sort=False)
