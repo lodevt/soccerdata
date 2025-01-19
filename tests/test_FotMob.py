@@ -41,3 +41,7 @@ def test_read_team_match_stats_alt_names(fotmob_laliga: FotMob) -> None:
         fotmob_laliga.read_team_match_stats(stat_type="Top stats", team="Valencia CF"),
         pd.DataFrame,
     )
+
+@pytest.mark.fails_gha()
+def test_read_match_lineups(fotmob_laliga: FotMob) -> None:
+    assert isinstance(fotmob_laliga.read_match_lineups(match_id='3424042'), pd.DataFrame)

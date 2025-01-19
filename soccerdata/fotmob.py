@@ -440,3 +440,77 @@ class FotMob(BaseRequestsReader):
             df[[col, col + " (%)"]] = df[col].str.split(expand=True)
             df[col + " (%)"] = df[col + " (%)"].str.extract(r"(\d+)").astype(float).div(100)
         return df
+
+    def read_match_lineups(
+            self,
+            match_id: Optional[Union[str, list[str]]] = None,
+            force_cache: bool = False,
+    ) -> pd.DataFrame:
+        df_matches = self.read_schedule(force_cache).reset_index()
+
+        if match_id is not None:
+            iterator = df_matches[
+                df_matches.game_id.isin([match_id] if isinstance(match_id, str) else match_id)
+            ]
+            if len(iterator) == 0:
+                raise ValueError('No games found with the given IDs in the selected seasons.')
+        else:
+            iterator = df_matches
+        games = []
+        for i, game in iterator.iterrows():
+            # Get data for specific game
+            urlmask = FOTMOB_API + 'matchDetails?matchId={}'
+            filemask = 'matches/{}.json'
+            url = urlmask.format(game.game_id)
+            logger.info('[%s/%s] Retrieving game with id=%s', i + 1, len(iterator), game.game_id)
+            filepath = self.data_dir / filemask.format(game.game_id)
+            reader = self.get(url, filepath, no_cache=not force_cache)
+            game_data = json.load(reader)
+            # Get home and away teams
+
+            matchweek = game_data['general']['matchRound']
+            match_time = game_data['general']['matchTimeUTCDate']
+            game_dict = {}
+
+            home_team = TEAMNAME_REPLACEMENTS.get(game_data["general"]["homeTeam"]["name"],
+                                                  game_data["general"]["homeTeam"]["name"])
+            game_dict["home_team"] = home_team
+            game_dict["home_team_id"] = game_data["general"]["homeTeam"]["id"]
+            game_dict['Matchweek'] = matchweek
+            game_dict['Date'] = match_time
+            away_team = TEAMNAME_REPLACEMENTS.get(game_data["general"]["awayTeam"]["name"],
+                                                  game_data["general"]["awayTeam"]["name"])
+            game_dict["away_team"] = away_team
+            game_dict["away_team_id"] = game_data["general"]["awayTeam"]["id"]
+
+            try:
+                home_lineups_info, away_lineups_info = game_data["content"]["lineup"]["homeTeam"], \
+                game_data["content"]["lineup"]["awayTeam"]
+
+                home_starters, away_starters = home_lineups_info["starters"], away_lineups_info["starters"]
+                players = []
+                general_positions_map = {0: "goalkeeper", 1: "defense", 2: "midfield",
+                                         3: "attack"}
+                for starter in home_starters:
+                    pos = general_positions_map[starter['usualPlayingPositionId']]
+                    player_info = {"player": starter["name"], "team": home_team, "general_position": pos}
+                    players.append(player_info)
+                for starter in away_starters:
+                    pos = general_positions_map[starter['usualPlayingPositionId']]
+                    player_info = {"player": starter["name"], "team": away_team, "general_position": pos}
+                    players.append(player_info)
+
+                if len(players) > 0:
+                    game_dict["lineups"] = pd.DataFrame(players)
+                else:
+                    game_dict["lineups"] = None
+
+            except Exception as e:
+                logger.warn(f"Failed to read lineups for game with id {games['game_id']} because of {e}")
+                game_dict["lineups"] = None
+
+            # df_game = df_game.T.drop_duplicates().T
+            games.append(game_dict)
+
+        return pd.DataFrame(games)
+
