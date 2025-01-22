@@ -945,7 +945,7 @@ class FBref(BaseRequestsReader):
                 )
                 df_table["minutes_played"] = df_table["minutes_played"].fillna(0)
                 lineups.append(df_table)
-        return pd.concat(lineups).set_index(["league", "season", "game"])
+        return pd.concat(lineups).set_index(["league", "season", "game"]).replace({"team": TEAMNAME_REPLACEMENTS})
 
     def read_events(
         self,
