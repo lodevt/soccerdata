@@ -249,7 +249,7 @@ class SoFIFA(BaseRequestsReader):
             # select requested teams
             iterator = df_teams.loc[df_teams.team.isin(teams_to_check), :]
             if len(iterator) == 0:
-                raise ValueError("No data found for the given teams in the selected seasons.")
+                raise ValueError(f"No data found for the given teams {teams_to_check} in the selected seasons.")
         else:
             iterator = df_teams
 
@@ -466,7 +466,14 @@ class SoFIFA(BaseRequestsReader):
 
             # extract scores one-by-one
             tree = html.parse(reader, parser=html.HTMLParser(encoding="utf8"))
-            node_player_name = tree.xpath("//div[contains(@class, 'profile')]/h1")[0]
+            try:
+                node_player_name = tree.xpath("//div[contains(@class, 'profile')]/h1")[0]
+            except:
+                # Retry withc no_cache
+                reader = self.get(url, filepath, no_cache=True)
+                # extract scores one-by-one
+                tree = html.parse(reader, parser=html.HTMLParser(encoding="utf8"))
+                node_player_name = tree.xpath("//div[contains(@class, 'profile')]/h1")[0]
             # Extract what is before <br>
             before_br = node_player_name.xpath("string(./text()[1])").strip()
             # Extract what is after <br>
