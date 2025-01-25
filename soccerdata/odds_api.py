@@ -16,7 +16,7 @@ from pathlib import Path
 
 
 ODDSAPI_DATADIR = DATA_DIR / "OddsApi"
-ODDSAPI_API = "https://api.the-odds-api.com/v4"
+ODDSAPI_API = "https://api.the-odds-api.com/v3"
 
 
 class OddsApi(BaseRequestsReader):
