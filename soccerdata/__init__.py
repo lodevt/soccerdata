@@ -13,6 +13,7 @@ __all__ = [
     "SoFIFA",
     "Understat",
     "WhoScored",
+    "OddsApi"
 ]
 
 from .clubelo import ClubElo
@@ -25,3 +26,4 @@ from .sofascore import Sofascore
 from .sofifa import SoFIFA
 from .understat import Understat
 from .whoscored import WhoScored
+from .odds_api import OddsApi
