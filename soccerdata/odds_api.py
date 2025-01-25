@@ -3,17 +3,43 @@ import os
 
 import requests
 import pandas as pd
-from ._config import TEAMNAME_REPLACEMENTS, DATA_DIR, LEAGUE_DICT, logger
+from ._config import (
+    TEAMNAME_REPLACEMENTS,
+    DATA_DIR,
+    LEAGUE_DICT,
+    logger,
+    NOSTORE,
+    NOCACHE,
+)
+from ._common import BaseRequestsReader
+from pathlib import Path
+
 
 ODDSAPI_DATADIR = DATA_DIR / "OddsApi"
 ODDSAPI_API = "https://api.the-odds-api.com/v4"
 
 
-class OddsApi:
+class OddsApi(BaseRequestsReader):
 
-    def __init__(self, force_cache=False):
+    def __init__(
+        self,
+        force_cache=False,
+        no_cache: bool = NOCACHE,
+        no_store: bool = NOSTORE,
+        data_dir: Path = ODDSAPI_DATADIR,
+    ):
         self.api_key = os.environ.get("ODDSAPI_KEY", "")
         self.force_cache = force_cache
+        self.no_store = no_store
+
+        super().__init__(
+            no_cache=no_cache,
+            no_store=no_store,
+            data_dir=data_dir,
+        )
+
+        if not self.no_store:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def get_sports(self):
         # First get a list of in-season sports
