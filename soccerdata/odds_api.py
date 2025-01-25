@@ -98,45 +98,45 @@ class OddsApi(BaseRequestsReader):
             table_row = [game["id"], home_team, away_team] + odds
             table.append(table_row)
 
-            df = pd.DataFrame(
-                table,
-                columns=[
-                    "id",
-                    "home_team",
-                    "away_team",
-                    "bookie_home_odds",
-                    "bookie_draw_odds",
-                    "bookie_away_odds",
-                ],
-            )
-            # Check your usage
-            logger.info(
-                f"Remaining requests{odds_response.headers['x-requests-remaining']}"
-            )
-            logger.info(f"Used requests {odds_response.headers['x-requests-used']}")
-            df = df.replace(
-                {
-                    "home_team": TEAMNAME_REPLACEMENTS,
-                    "away_team": TEAMNAME_REPLACEMENTS,
-                }
-            )
-            file_path = ODDSAPI_DATADIR.joinpath(league + ".json")
-            # Check if the file exists before attempting to read it
-            if file_path.is_file():
-                # Read the existing DataFrame from the file
-                existing_df = pd.read_json(str(file_path), orient="records", lines=True)
+        df = pd.DataFrame(
+            table,
+            columns=[
+                "id",
+                "home_team",
+                "away_team",
+                "bookie_home_odds",
+                "bookie_draw_odds",
+                "bookie_away_odds",
+            ],
+        )
+        # Check your usage
+        logger.info(
+            f"Remaining requests{odds_response.headers['x-requests-remaining']}"
+        )
+        logger.info(f"Used requests {odds_response.headers['x-requests-used']}")
+        df = df.replace(
+            {
+                "home_team": TEAMNAME_REPLACEMENTS,
+                "away_team": TEAMNAME_REPLACEMENTS,
+            }
+        )
+        file_path = ODDSAPI_DATADIR.joinpath(league + ".json")
+        # Check if the file exists before attempting to read it
+        if file_path.is_file():
+            # Read the existing DataFrame from the file
+            existing_df = pd.read_json(str(file_path), orient="records", lines=True)
 
-                # Append new rows to the existing DataFrame (df)
-                combined_df = pd.concat([existing_df, df], ignore_index=True)
-                # Remove duplicate rows
-                combined_df = combined_df.drop_duplicates(
-                    subset=["id", "home_team", "away_team"], keep="last"
-                )
+            # Append new rows to the existing DataFrame (df)
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+            # Remove duplicate rows
+            combined_df = combined_df.drop_duplicates(
+                subset=["id", "home_team", "away_team"], keep="last"
+            )
 
-                # Save the updated DataFrame back to the file
-                combined_df.to_json(str(file_path), orient="records", lines=True)
-                return combined_df
-            else:
-                # If the file doesn't exist, create a new file with the current DataFrame
-                df.to_json(str(file_path), orient="records", lines=True)
-                return df
+            # Save the updated DataFrame back to the file
+            combined_df.to_json(str(file_path), orient="records", lines=True)
+            return combined_df
+        else:
+            # If the file doesn't exist, create a new file with the current DataFrame
+            df.to_json(str(file_path), orient="records", lines=True)
+            return df
