@@ -155,7 +155,7 @@ class MatchHistory(BaseRequestsReader):
 
                 df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
                 df['game'] = df.apply(make_game_id, axis=1)
-                df['season'] = SeasonCode.MULTI_YEAR.parse(df['season'])
+                df['season'] = df['season'].apply(SeasonCode.MULTI_YEAR.parse)
                 df = df.replace(
                     {
                         'home_team': TEAMNAME_REPLACEMENTS,
