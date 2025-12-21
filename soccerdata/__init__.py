@@ -1,16 +1,15 @@
 """A collection of tools to read and process soccer data from various sources."""
 
-__version__ = "1.8.6"
+__version__ = "1.8.7"
 
 __all__ = [
-    "ClubElo",
     "ESPN",
+    "ClubElo",
     "FBref",
-    "FiveThirtyEight",
     "FotMob",
     "MatchHistory",
-    "Sofascore",
     "SoFIFA",
+    "Sofascore",
     "Understat",
     "WhoScored",
     "OddsApi"
@@ -19,7 +18,6 @@ __all__ = [
 from .clubelo import ClubElo
 from .espn import ESPN
 from .fbref import FBref
-from .fivethirtyeight import FiveThirtyEight
 from .fotmob import FotMob
 from .match_history import MatchHistory
 from .sofascore import Sofascore
