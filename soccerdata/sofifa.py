@@ -276,6 +276,7 @@ class SoFIFA(BaseRequestsReader):
                         ),
                         "player": node.get("data-tippy-content"),
                         "team": df_team["team"],
+                        "team_id": team_id,
                         "league": df_team["league"],
                         **version.to_dict(),
                     }
