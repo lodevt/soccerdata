@@ -1153,6 +1153,48 @@ def _parse_table(html_table: html.HtmlElement) -> pd.DataFrame:
         elem.getparent().remove(elem)
     # parse HTML to dataframe
     (df_table,) = pd.read_html(html.tostring(html_table), flavor="lxml")
+
+    # check if it's a player table
+    player_tds = html_table.xpath(".//td[@data-stat='player']")
+    if player_tds:
+        player_ids = []
+        for row in html_table.xpath(".//tbody/tr"):
+            player_td = row.xpath(".//td[@data-stat='player']")
+            if player_td is not None and len(player_td) > 0:
+                player_ids.append(player_td[0].get("data-append-csv"))
+            else:
+                player_ids.append(None)
+        df_table["player_id"] = player_ids
+
+    # Check if it's a team table
+    team_tds = html_table.xpath(".//td[@data-stat='team']")
+    if team_tds:
+        team_ids = []
+        for row in html_table.xpath(".//tbody/tr"):
+            team_td = row.xpath(".//td[@data-stat='team']/a")
+            if team_td is not None and len(team_td) > 0:
+                href = team_td[0].get("href")
+                # Extract the team_id from the URL
+                team_id = href.split("/")[3] if href else None
+                team_ids.append(team_id)
+            else:
+                team_ids.append(None)
+        df_table["team_id"] = team_ids
+
+    # ----- Team IDs (home and away) -----
+    for side in ["home_team", "away_team"]:
+        side_tds = html_table.xpath(f".//td[@data-stat='{side}']/a")
+        if side_tds:
+            team_ids = []
+            for row in html_table.xpath(".//tbody/tr"):
+                team_td = row.xpath(f".//td[@data-stat='{side}']/a")
+                if team_td and len(team_td) > 0:
+                    href = team_td[0].get("href")
+                    team_ids.append(href.split("/")[3] if href else None)
+                else:
+                    team_ids.append(None)
+            df_table[f"{side}_id"] = team_ids
+
     return df_table.convert_dtypes()
 
 
