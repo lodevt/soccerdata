@@ -906,8 +906,9 @@ class FBref(BaseRequestsReader):
             for i, html_table in enumerate(html_tables):
                 # parse lineup table
                 df_table = _parse_table(html_table)
-                df_table.columns = ["jersey_number", "player"]
+                df_table.columns = ["jersey_number", "player", "player_id"]
                 df_table["team"] = teams[i]["name"]
+                df_table["team_id"] = teams[i]["id"]
                 if "Bench" in df_table.jersey_number.values:
                     bench_idx = df_table.index[df_table.jersey_number == "Bench"][0]
                     df_table.loc[:bench_idx, "is_starter"] = True
@@ -931,6 +932,7 @@ class FBref(BaseRequestsReader):
                 ]
                 df_stats_table["jersey_number"] = df_stats_table["jersey_number"].astype("Int64")
                 df_table["jersey_number"] = df_table["jersey_number"].astype("Int64")
+                df_table["player_id"] = df_table["player_id"]
                 df_table = pd.merge(
                     df_table, df_stats_table, on=["player", "jersey_number"], how="left"
                 )
@@ -1194,6 +1196,24 @@ def _parse_table(html_table: html.HtmlElement) -> pd.DataFrame:
                 else:
                     team_ids.append(None)
             df_table[f"{side}_id"] = team_ids
+
+    # ---------------------------------------------------
+    # LINEUP TABLE (no data-stat, but player links)
+    # ---------------------------------------------------
+    if html_table.xpath(".//a[contains(@href, '/en/players/')]"):
+        player_ids = []
+        rows = html_table.xpath(".//tr")[1:]  # skip header row
+
+        for row in rows:
+            a = row.xpath(".//a[contains(@href, '/en/players/')]")
+            if a:
+                href = a[0].get("href")
+                player_ids.append(href.split("/")[3] if href else None)
+            else:
+                player_ids.append(None)
+
+        if len(player_ids) == len(df_table):
+            df_table["player_id"] = player_ids
 
     return df_table.convert_dtypes()
 
