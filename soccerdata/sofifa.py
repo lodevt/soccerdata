@@ -488,6 +488,7 @@ class SoFIFA(BaseRequestsReader):
             # Extract what is after <br>
             after_br = node_player_name.xpath("string(./br/following-sibling::text()[1])").strip()
             scores = {
+                "player_id": player,
                 "player": before_br if before_br else after_br,
                 **version.to_dict(),
             }
