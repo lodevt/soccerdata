@@ -463,6 +463,18 @@ class SoFIFA(BaseRequestsReader):
 
             # extract scores one-by-one
             tree = html.parse(reader, parser=html.HTMLParser(encoding="utf8"))
+
+            roster_node = tree.xpath("//select[@id='select-roster']/option[@selected]")
+            page_roster = roster_node[0].attrib["value"] if roster_node else None
+
+            if str(version_id) not in page_roster:
+                logger.warning(
+                    "Requested version %s, but got version %s for player ID %s. Skipping.",
+                    version_id,
+                    page_roster,
+                    player,
+                )
+                continue
             try:
                 node_player_name = tree.xpath("//div[contains(@class, 'profile')]/h1")[0]
             except:
