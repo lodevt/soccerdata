@@ -7,12 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{hashFiles('.pre-commit-config.yaml')}}
@@ -52,7 +52,7 @@ jobs:
         shell: bash
     steps:
       - name: Check out
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
@@ -68,7 +68,7 @@ jobs:
         run: uv run dvc remote modify --local myremote credentialpath credentials.json
 
       - name: Cache DVC
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .dvc/cache
           key: dvc-cache-${{ hashFiles('**/dvc.lock') }}
@@ -87,17 +87,17 @@ jobs:
         run: uv run mypy --install-types --non-interactive --config-file pyproject.toml soccerdata tests
 
       - name: Upload coverage reports to Codecov with GitHub Action on Python 3.11 for Ubuntu
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: ${{matrix.python-version == '3.11'}}
 
   check-docs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11" # match what's in .readthedocs.yml
 
