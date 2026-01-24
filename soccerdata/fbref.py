@@ -1,16 +1,19 @@
 """Scraper for http://fbref.com."""
 
+import io
+import random
+import time
 import warnings
 from datetime import datetime, timezone
 from functools import reduce
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Iterable, Optional, Union
 
 import pandas as pd
 from lxml import etree, html
 
 from ._common import (
-    BaseRequestsReader,
+    BaseSeleniumReader,
     SeasonCode,
     add_alt_team_names,
     make_game_id,
@@ -33,7 +36,7 @@ BIG_FIVE_DICT = {
 }
 
 
-class FBref(BaseRequestsReader):
+class FBref(BaseSeleniumReader):
     """Provides pd.DataFrames from data at http://fbref.com.
 
     Data will be downloaded as necessary and cached locally in
@@ -73,29 +76,26 @@ class FBref(BaseRequestsReader):
         no_cache: bool = NOCACHE,
         no_store: bool = NOSTORE,
         data_dir: Path = FBREF_DATADIR,
+        path_to_browser: Optional[Path] = None,
+        headless: bool = True,
     ):
-        """Initialize FBref reader."""
+        """Initialize FBref reader.
+
+        Note: FBref now uses the Selenium-based reader (like WhoScored) so a
+        persistent Selenium driver is reused and page loading is handled by the
+        browser. This mirrors the architectural approach in `whoscored.py`.
+        """
         super().__init__(
             leagues=leagues,
             proxy=proxy,
             no_cache=no_cache,
             no_store=no_store,
             data_dir=data_dir,
-            headers=FBREF_HEADERS,
+            path_to_browser=path_to_browser,
+            headless=headless,
         )
         self.rate_limit = 7
         self.seasons = seasons
-        # check if all top 5 leagues are selected
-        if (
-            set(BIG_FIVE_DICT.values()).issubset(self.leagues)
-            and "Big 5 European Leagues Combined" not in self.leagues
-        ):
-            warnings.warn(
-                "You are trying to scrape data for all of the Big 5 European leagues. "
-                "This can be done more efficiently by setting "
-                "leagues='Big 5 European Leagues Combined'.",
-                stacklevel=1,
-            )
 
     @property
     def leagues(self) -> list[str]:
@@ -1135,7 +1135,80 @@ class FBref(BaseRequestsReader):
             .dropna(how="all")
         )
 
+    def _download_and_save(
+        self,
+        url: str,
+        filepath: Optional[Path] = None,
+        var: Optional[Union[str, Iterable[str]]] = None,
+    ) -> io.IOBase:
+        """Download file at url to filepath using the shared Selenium driver.
 
+        This override mirrors the Selenium fetching in `BaseSeleniumReader` but
+        adds explicit waits specific to FBref: after navigation we poll the
+        rendered page for the presence of table elements (common on FBref pages)
+        before extracting the HTML. This helps ensure JavaScript-rendered
+        tables are available for parsing.
+        """
+        # Keep retry/backoff semantics similar to the base class
+        for i in range(5):
+            try:
+                # Navigate with Selenium driver
+                self._driver.get(url)
+                # Small delay to let JS start executing
+                time.sleep(self.rate_limit + random.random() * (self.max_delay or 0))
+
+                # Poll for presence of table elements up to a timeout
+                start = time.time()
+                timeout = 15  # seconds
+                page_html = ""
+                while time.time() - start < timeout:
+                    try:
+                        # Use execute_script to retrieve body HTML (as in BaseSeleniumReader)
+                        page_html = self._driver.execute_script("return document.body.innerHTML;")
+                    except Exception:
+                        page_html = getattr(self._driver, "page_source", "")
+                    # quick checks for FBref content
+                    if page_html and "Incapsula incident ID" in page_html:
+                        raise Exception("Your IP is blocked or Cloudflare interstitial detected.")
+                    # If a table is present, assume main content loaded
+                    if "<table" in page_html:
+                        break
+                    time.sleep(0.5)
+
+                if not page_html:
+                    raise Exception("Empty response from Selenium driver.")
+
+                # If var was requested, fall back to base behavior (not commonly used for FBref)
+                if var is not None:
+                    # FBref doesn't expose JSON vars in the same way; return body
+                    payload = page_html.encode("utf-8")
+                else:
+                    payload = page_html.encode("utf-8")
+
+                if not self.no_store and filepath is not None:
+                    filepath.parent.mkdir(parents=True, exist_ok=True)
+                    with filepath.open(mode="wb") as fh:
+                        fh.write(payload)
+                return io.BytesIO(payload)
+            except Exception:
+                logger.exception(
+                    "Error while scraping %s. Retrying in %d seconds... (attempt %d of 5).",
+                    url,
+                    i * 5,
+                    i + 1,
+                )
+                time.sleep(i * 5)
+                # try to re-init driver
+                try:
+                    self._driver = self._init_webdriver()
+                except Exception:
+                    pass
+                continue
+
+        raise ConnectionError(f"Could not download {url}.")
+
+
+# python
 def _parse_table(html_table: html.HtmlElement) -> pd.DataFrame:
     """Parse HTML table into a dataframe.
 
@@ -1148,9 +1221,12 @@ def _parse_table(html_table: html.HtmlElement) -> pd.DataFrame:
     -------
     pd.DataFrame
     """
-    # remove icons
-    for elem in html_table.xpath("//span[contains(@class, 'f-i')]"):
-        etree.strip_elements(elem.getparent(), "span", with_tail=False)
+    # remove icons (safe: only call strip_elements if parent exists)
+    for elem in html_table.xpath(".//span[contains(@class, 'f-i')]"):
+        parent = elem.getparent()
+        if parent is not None:
+            etree.strip_elements(parent, "span", with_tail=False)
+
     # remove sep rows
     for elem in html_table.xpath("//tbody/tr[contains(@class, 'spacer')]"):
         elem.getparent().remove(elem)
