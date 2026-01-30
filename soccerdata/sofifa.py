@@ -1,17 +1,20 @@
 """Scraper for http://sofifa.com."""
 
+import io
 import json
+import random
 import re
+import time
 from datetime import timedelta
 from itertools import product
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Iterable, Optional, Union
 
 import pandas as pd
 from lxml import html
 
 from ._common import (
-    BaseRequestsReader,
+    BaseSeleniumReader,
     add_standardized_team_name,
     safe_xpath_text,
     standardize_colnames,
@@ -22,7 +25,7 @@ SO_FIFA_DATADIR = DATA_DIR / "SoFIFA"
 SO_FIFA_API = "https://sofifa.com"
 
 
-class SoFIFA(BaseRequestsReader):
+class SoFIFA(BaseSeleniumReader):
     """Provides pd.DataFrames from data at http://sofifa.com.
 
     Data will be downloaded as necessary and cached locally in
@@ -63,6 +66,8 @@ class SoFIFA(BaseRequestsReader):
         no_cache: bool = NOCACHE,
         no_store: bool = NOSTORE,
         data_dir: Path = SO_FIFA_DATADIR,
+        path_to_browser: Optional[Path] = None,
+        headless: bool = True,
     ):
         """Initialize SoFIFA reader."""
         super().__init__(
@@ -71,6 +76,8 @@ class SoFIFA(BaseRequestsReader):
             no_cache=no_cache,
             no_store=no_store,
             data_dir=data_dir,
+            path_to_browser=path_to_browser,
+            headless=headless,
         )
         self.rate_limit = 1
         if versions == "latest":
@@ -512,3 +519,56 @@ class SoFIFA(BaseRequestsReader):
 
         # return data frame
         return pd.DataFrame(ratings).pipe(standardize_colnames).set_index(["player"]).sort_index()
+
+    def _download_and_save(
+        self,
+        url: str,
+        filepath: Optional[Path] = None,
+        var: Optional[Union[str, Iterable[str]]] = None,
+    ) -> io.IOBase:
+        """Download file at url to filepath using the shared Selenium driver.
+
+        For JSON API endpoints, return the page text so json.load works.
+        """
+        for i in range(5):
+            try:
+                self._driver.get(url)
+                time.sleep(self.rate_limit + random.random() * (self.max_delay or 0))
+
+                if var is not None:
+                    if not isinstance(var, str):
+                        raise NotImplementedError("Only implemented for single variables.")
+                    try:
+                        payload = json.dumps(self._driver.execute_script("return " + var)).encode(
+                            "utf-8"
+                        )
+                    except Exception:
+                        payload = json.dumps(None).encode("utf-8")
+                else:
+                    if "/api/" in url:
+                        page_text = self._driver.execute_script("return document.body.innerText;")
+                        payload = page_text.encode("utf-8")
+                    else:
+                        page_html = self._driver.execute_script("return document.body.innerHTML;")
+                        if not page_html:
+                            raise Exception("Empty response.")
+                        payload = page_html.encode("utf-8")
+
+                if not self.no_store and filepath is not None:
+                    filepath.parent.mkdir(parents=True, exist_ok=True)
+                    with filepath.open(mode="wb") as fh:
+                        fh.write(payload)
+                return io.BytesIO(payload)
+            except Exception:
+                logger.exception(
+                    "Error while scraping %s. Retrying in %d seconds... (attempt %d of 5).",
+                    url,
+                    i * 10,
+                    i + 1,
+                )
+                time.sleep(i * 10)
+                self._driver = self._init_webdriver()
+                continue
+
+        raise ConnectionError(f"Could not download {url}.")
+
